@@ -1,0 +1,15 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+**/build/
+/captures
+**/.externalNativeBuild/
+**/.cxx/
+*.apk
+*.aab
+
+# Bundled Whisper models (~239MB) — too large for git history; fetch separately,
+# see docs/CHECKLIST.md for the ggml-org/whisper.cpp download URLs used.
+app/src/main/assets/models/*.bin
