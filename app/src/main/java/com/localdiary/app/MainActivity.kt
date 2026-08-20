@@ -24,13 +24,19 @@ import com.localdiary.app.entry.EntryEditorViewModel
 import com.localdiary.app.home.DiaryBook
 import com.localdiary.app.home.HomeScreen
 import com.localdiary.app.home.HomeViewModel
+import com.localdiary.app.home.PaperColor
+import com.localdiary.app.ui.theme.appColorScheme
+import com.localdiary.app.ui.theme.appTypography
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+            MaterialTheme(colorScheme = appColorScheme(), typography = appTypography()) {
+                // The book's own closed/opening backdrop draws over this while locked,
+                // so this color is only ever seen once the diary is open — its "paper"
+                // identity carrying through as the app's base background.
+                Surface(modifier = Modifier.fillMaxSize(), color = PaperColor) {
                     AppRoot()
                 }
             }
@@ -73,7 +79,8 @@ private fun DiaryHome() {
                 HomeScreen(
                     viewModel = viewModel,
                     onNewEntry = { screen = DiaryScreen.Editor(entryId = null) },
-                    onOpenEntry = { id -> screen = DiaryScreen.Editor(entryId = id) }
+                    onOpenEntry = { id -> screen = DiaryScreen.Editor(entryId = id) },
+                    onSettings = {}
                 )
             }
             is DiaryScreen.Editor -> {

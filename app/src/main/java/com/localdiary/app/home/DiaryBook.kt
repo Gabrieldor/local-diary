@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.FilledIconButton
@@ -32,34 +33,72 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.localdiary.app.lock.PasswordPromptDialog
+import com.localdiary.app.ui.theme.AppFontFamily
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val CoverEasing = CubicBezierEasing(0.32f, 0.68f, 0.24f, 1.02f)
 
-// Palette matches the validated book-cover-reveal prototype: oxblood cover, cream paper,
-// brass hardware. Fixed regardless of app theme (light/dark) — this is the diary's own
-// identity, not a themed surface.
-private val CoverColor = Color(0xFF5E2438)
-private val CoverColorDark = Color(0xFF3A1522)
-private val BrassAccent = Color(0xFFAB8A4E)
-private val PaperColor = Color(0xFFF2ECD9)
-private val PaperShade = Color(0xFFD9D2C1)
-private val PaperText = Color(0xFF2A2118)
-private val PaperTextDim = Color(0xFF5C5348)
-private val ShadowColor = Color(0xFF140E0A)
+// Palette pulled directly from the validated prototype's CSS custom properties
+// (fetched from the live artifact, not from memory). Cover/backdrop/accent/shadow
+// use the dark-theme tokens; the paper tokens deliberately stay on the light-theme
+// ("yellow") values — a mixed palette, by request, not a themed surface.
+// Also used as the app-wide button container color (see ui/theme/Theme.kt).
+internal val CoverColor = Color(0xFF7A3049) // dark --color-cover
+internal val CoverColorDark = Color(0xFF4A1C2C) // dark --color-cover-dark
+private val CoverShine = Color(0x1AFFF4DE) // dark --color-cover-shine: rgba(255,244,222,0.10)
+// Also used for the binder tab icons/labels and the page wordmark.
+internal val BrassAccent = Color(0xFFC7A565) // dark --color-accent
+// Also the app's base background for everything other than the closed/opening book
+// (see MainActivity's Surface) — the diary's "paper" identity carries through once open.
+internal val PaperColor = Color(0xFFF2ECD9) // light --color-paper
+// Also exposed for card surfaces elsewhere in the app — "page color, slightly darker".
+internal val PaperShade = Color(0xFFE6DFC9) // light --color-paper-shade
+// Also used for entry titles on the home screen's ruled page.
+internal val PaperText = Color(0xFF2A2118) // light --color-paper-text
+// Also used for entry dates and dimmed text on the home screen.
+internal val PaperTextDim = Color(0xFF5C5348) // light --color-text-dim
+// Also used for the home screen's ruled-paper lines.
+internal val BorderColor = Color(0x24241D22) // light --color-border: rgba(36,29,34,0.14)
+private val ShadowColor = Color(0xA6000000) // dark --color-shadow: rgba(0,0,0,0.65)
+
+// Matches the prototype's stage panel (--color-bg-dim) — the backdrop the closed book
+// sits on, replacing the plain Material background while the book isn't full-screen.
+// Also used behind the home screen's binder tab row, so the reserved empty tab's dashed
+// border and the seams between tabs read against a dark ground instead of the cream page.
+internal val BackdropColor = Color(0xFF100E0B) // --color-bg-dim
+
+/**
+ * CSS's `linear-gradient(angleDeg, ...)` line length depends on the box's aspect ratio —
+ * for a non-square box it is NOT the same as a plain corner-to-corner brush (which is what
+ * Compose's default start/end gives you). This reproduces the CSS gradient-line algorithm
+ * exactly: 0deg points up, angle increases clockwise, and the line is exactly long enough
+ * to span the box at that angle.
+ */
+private fun cssAngleGradient(angleDeg: Float, size: Size, vararg colorStops: Pair<Float, Color>): Brush {
+    val theta = Math.toRadians(angleDeg.toDouble())
+    val dx = kotlin.math.sin(theta).toFloat()
+    val dy = -kotlin.math.cos(theta).toFloat()
+    val halfLength = kotlin.math.abs(size.width / 2f * dx) + kotlin.math.abs(size.height / 2f * dy)
+    val center = Offset(size.width / 2f, size.height / 2f)
+    val start = center - Offset(dx, dy) * halfLength
+    val end = center + Offset(dx, dy) * halfLength
+    return Brush.linearGradient(colorStops = colorStops, start = start, end = end)
+}
 
 private const val ClosedWidthFraction = 0.8f
 private const val ClosedAspectRatio = 0.7f
@@ -97,9 +136,14 @@ fun DiaryBook(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val density = LocalDensity.current.density
     val cameraDistance = 8 * density * 30
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    val backdropModifier = if (state == BookState.Open) Modifier else Modifier.background(BackdropColor)
+    BoxWithConstraints(modifier = modifier.fillMaxSize().then(backdropModifier)) {
         val closedWidth = maxWidth * ClosedWidthFraction
         val closedHeight = closedWidth / ClosedAspectRatio
+        // The cover fades out well before the book finishes expanding, so its own
+        // rotated/gradiented life is spent entirely at the closed size — safe to use
+        // as a fixed size for the angle-accurate gradients below.
+        val closedSizePx = Size(closedWidth.value * density, closedHeight.value * density)
 
         val bookWidth = remember { Animatable(closedWidth.value) }
         val bookHeight = remember { Animatable(closedHeight.value) }
@@ -190,6 +234,7 @@ fun DiaryBook(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
                     angle = coverAngle.value,
                     titleAlpha = coverTitleAlpha.value,
                     cameraDistance = cameraDistance,
+                    size = closedSizePx,
                     showLock = state == BookState.Closed,
                     onLockClick = { showPasswordPrompt = true }
                 )
@@ -222,7 +267,7 @@ private fun MiniPageLayer() {
                 color = BrassAccent,
                 fontSize = 11.sp,
                 letterSpacing = 1.5.sp,
-                fontFamily = FontFamily.Monospace
+                fontFamily = AppFontFamily
             )
             Column(modifier = Modifier.padding(top = 14.dp)) {
                 listOf("New entry", "Entries", "Search", "Settings").forEach { label ->
@@ -245,6 +290,7 @@ private fun CoverLayer(
     angle: Float,
     titleAlpha: Float,
     cameraDistance: Float,
+    size: Size,
     showLock: Boolean,
     onLockClick: () -> Unit
 ) {
@@ -256,19 +302,31 @@ private fun CoverLayer(
                 this.cameraDistance = cameraDistance
                 transformOrigin = TransformOrigin(0f, 0.5f)
             }
+            // Matches box-shadow: 0 10px 26px var(--color-shadow) — lifts the cover
+            // off the backdrop instead of it reading as a flat colored rectangle.
+            .shadow(elevation = 16.dp, shape = BookShape, ambientColor = ShadowColor, spotColor = ShadowColor)
             .background(
-                Brush.linearGradient(listOf(CoverColor, CoverColorDark)),
+                cssAngleGradient(160f, size, 0f to CoverColor, 1f to CoverColorDark),
                 BookShape
-            ),
+            )
+            .background(
+                cssAngleGradient(135f, size, 0f to CoverShine, 0.4f to Color.Transparent),
+                BookShape
+            )
+            // Matches the CSS's `inset 0 0 0 1px rgba(0,0,0,0.25)` — a thin dark bevel
+            // along the inner edge for a little more depth.
+            .border(1.dp, Color(0x40000000), BookShape),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "Local Diary",
+            text = "Local\nDiary",
             color = PaperColor,
-            fontSize = 22.sp,
+            fontSize = 24.sp,
+            lineHeight = 27.6.sp,
+            textAlign = TextAlign.Center,
             fontStyle = FontStyle.Italic,
             fontWeight = FontWeight.Medium,
-            fontFamily = FontFamily.Serif,
+            fontFamily = AppFontFamily,
             modifier = Modifier.graphicsLayer { alpha = titleAlpha }
         )
         Box(
@@ -305,7 +363,7 @@ private fun PageFlipLayer(angle: Float, cameraDistance: Float, pageColor: Color,
                 transformOrigin = TransformOrigin(0f, 0.5f)
             }
             .background(pageColor, BookShape)
-            .border(1.dp, PaperTextDim.copy(alpha = 0.3f), BookShape)
+            .border(1.dp, BorderColor, BookShape)
             .padding(18.dp)
     ) {
         Column(modifier = Modifier.padding(top = 28.dp)) {
@@ -315,7 +373,7 @@ private fun PageFlipLayer(angle: Float, cameraDistance: Float, pageColor: Color,
                         .fillMaxWidth(fraction)
                         .height(2.dp)
                         .padding(vertical = 5.dp)
-                        .background(PaperShade)
+                        .background(BorderColor)
                 )
             }
         }
@@ -323,7 +381,7 @@ private fun PageFlipLayer(angle: Float, cameraDistance: Float, pageColor: Color,
             text = pageNumber,
             color = PaperTextDim,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = AppFontFamily,
             modifier = Modifier.align(Alignment.BottomEnd)
         )
     }
