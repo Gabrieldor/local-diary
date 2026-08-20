@@ -89,6 +89,14 @@ module (don't create empty feature module shells ahead of time).
    asset file rather than producing a substitute. Plain UI chrome that is unambiguously code, not
    art — layout, spacing, Material color/typography choices, standard Compose/Material icons from
    the official icon library — is not "art" for purposes of this rule.
+7. **When porting a validated prototype (e.g. an HTML/artifact mockup) into the app, match the
+   approved *result*, not just the underlying idea or technique.** The prototype's implementation
+   detail is disposable — bugs specific to it (CSS depth-sorting quirks, etc.) do not carry over
+   into a Compose implementation and shouldn't shape it. But the visual outcome the user actually
+   signed off on (colors, shapes, proportions, layout, level of detail) does carry over — silently
+   substituting a simpler placeholder look (default theme colors, no shape/detail) instead of
+   reproducing what was approved is a real regression, not a reasonable technique swap. If scope or
+   fidelity needs to shrink from what was validated, say so and ask, rather than deciding it alone.
 
 ## Testing strategy (see the earlier design discussion, unchanged)
 

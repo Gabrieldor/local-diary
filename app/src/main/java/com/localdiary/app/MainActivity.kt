@@ -7,8 +7,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -23,9 +21,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.localdiary.app.entry.EntryEditorScreen
 import com.localdiary.app.entry.EntryEditorViewModel
+import com.localdiary.app.home.DiaryBook
 import com.localdiary.app.home.HomeScreen
 import com.localdiary.app.home.HomeViewModel
-import com.localdiary.app.lock.LockScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,29 +38,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * Controller for the locked/unlocked transition. Owns no lock/auth logic itself
- * (that's PasswordPromptDialog's and, later, M2's job) — just coordinates which
- * screen is shown and how the switch animates.
- */
 @Composable
 private fun AppRoot() {
-    var isUnlocked by remember { mutableStateOf(false) }
-
-    AnimatedContent(
-        targetState = isUnlocked,
-        label = "lock-unlock-transition",
-        transitionSpec = {
-            (scaleIn(initialScale = 0.85f, animationSpec = tween(450)) + fadeIn(animationSpec = tween(450)))
-                .togetherWith(scaleOut(targetScale = 1.1f, animationSpec = tween(450)) + fadeOut(animationSpec = tween(450)))
-        }
-    ) { unlocked ->
-        if (unlocked) {
-            DiaryHome()
-        } else {
-            LockScreen(onUnlock = { isUnlocked = true })
-        }
-    }
+    DiaryBook { DiaryHome() }
 }
 
 private sealed interface DiaryScreen {
