@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,6 +65,21 @@ private const val ClosedWidthFraction = 0.8f
 private const val ClosedAspectRatio = 0.7f
 private val BookShape = RoundedCornerShape(topStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp, bottomStart = 3.dp)
 
+// 140ms is the fastest a single flip can be while its own rotation is still visible —
+// confirmed by catching a mid-flip frame in a screen recording; below that (tried 55ms)
+// it reads as a hard cut between flat pages, not a flip.
+private const val FlipPageCount = 7
+private const val FlipStartOffsetMs = 100
+private const val FlipDurationMs = 140
+private val FlipLinePatterns = listOf(
+    listOf(0.7f, 0.95f, 0.55f),
+    listOf(0.88f, 0.6f, 0.75f),
+    listOf(0.65f, 0.9f, 0.5f, 0.8f),
+    listOf(0.92f, 0.58f),
+    listOf(0.7f, 0.85f, 0.6f),
+    listOf(0.55f, 0.9f, 0.7f, 0.62f)
+)
+
 private enum class BookState { Closed, Opening, Open }
 
 /**
@@ -92,11 +108,8 @@ fun DiaryBook(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
         val coverTitleAlpha = remember { Animatable(1f) }
         var coverVisible by remember { mutableStateOf(true) }
 
-        val flip1Angle = remember { Animatable(0f) }
-        var flip1Visible by remember { mutableStateOf(true) }
-
-        val flip2Angle = remember { Animatable(0f) }
-        var flip2Visible by remember { mutableStateOf(true) }
+        val flipAngles = remember { List(FlipPageCount) { Animatable(0f) } }
+        val flipVisible = remember { mutableStateListOf<Boolean>().apply { repeat(FlipPageCount) { add(true) } } }
 
         val shadowAlpha = remember { Animatable(0f) }
         val contentAlpha = remember { Animatable(0f) }
@@ -111,24 +124,22 @@ fun DiaryBook(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
             launch { coverTitleAlpha.animateTo(0f, tween(160)) }
             launch { shadowAlpha.animateTo(0.4f, tween(300)) }
             launch {
-                // Same treatment as the cover: same duration, same easing, same target
-                // angle — this page should swing open with the same weight as the cover did.
-                delay(100)
-                flip1Angle.animateTo(-155f, tween(620, easing = CoverEasing))
-                flip1Visible = false
+                // Sequential by construction: each page's animateTo suspends this coroutine
+                // until it's fully done before the next one starts, so no two pages are ever
+                // mid-flip at the same time.
+                delay(FlipStartOffsetMs.toLong())
+                for (i in 0 until FlipPageCount) {
+                    flipAngles[i].animateTo(-170f, tween(FlipDurationMs, easing = FastOutSlowInEasing))
+                    flipVisible[i] = false
+                }
             }
             launch {
-                delay(720)
-                flip2Angle.animateTo(-170f, tween(260, easing = FastOutSlowInEasing))
-                flip2Visible = false
+                delay(700)
+                launch { bookWidth.animateTo(maxWidth.value, tween(500, easing = FastOutSlowInEasing)) }
+                bookHeight.animateTo(maxHeight.value, tween(500, easing = FastOutSlowInEasing))
             }
             launch {
-                delay(720)
-                launch { bookWidth.animateTo(maxWidth.value, tween(520, easing = FastOutSlowInEasing)) }
-                bookHeight.animateTo(maxHeight.value, tween(520, easing = FastOutSlowInEasing))
-            }
-            launch {
-                delay(980)
+                delay(FlipStartOffsetMs + FlipDurationMs.toLong() * FlipPageCount)
                 launch { shadowAlpha.animateTo(0f, tween(260)) }
                 launch { miniPageAlpha.animateTo(0f, tween(260)) }
                 contentAlpha.animateTo(1f, tween(300))
@@ -161,23 +172,18 @@ fun DiaryBook(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
                 }
             }
 
-            if (flip2Visible) {
-                PageFlipLayer(
-                    angle = flip2Angle.value,
-                    cameraDistance = cameraDistance,
-                    pageColor = PaperShade,
-                    lineWidths = listOf(0.7f, 0.95f, 0.55f),
-                    pageNumber = "2"
-                )
-            }
-            if (flip1Visible) {
-                PageFlipLayer(
-                    angle = flip1Angle.value,
-                    cameraDistance = cameraDistance,
-                    pageColor = PaperColor,
-                    lineWidths = listOf(0.88f, 0.6f, 0.75f),
-                    pageNumber = "1"
-                )
+            for (i in FlipPageCount - 1 downTo 0) {
+                if (flipVisible[i]) {
+                    PageFlipLayer(
+                        angle = flipAngles[i].value,
+                        cameraDistance = cameraDistance,
+                        // Alternate light/dark so every flip contrasts against the page it
+                        // reveals underneath, the same way flip1/flip2 did.
+                        pageColor = if (i % 2 == 0) PaperColor else PaperShade,
+                        lineWidths = FlipLinePatterns[i % FlipLinePatterns.size],
+                        pageNumber = (i + 1).toString()
+                    )
+                }
             }
             if (coverVisible) {
                 CoverLayer(
