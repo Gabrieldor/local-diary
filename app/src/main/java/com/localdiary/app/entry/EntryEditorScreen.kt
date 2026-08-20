@@ -110,14 +110,14 @@ fun EntryEditorScreen(viewModel: EntryEditorViewModel, entryId: Long?, onDone: (
             }
         }
 
-        OutlinedTextField(
-            value = uiState.text,
-            onValueChange = viewModel::onTextChanged,
+        PagedTextEditor(
+            text = uiState.text,
+            onTextChange = viewModel::onTextChanged,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .padding(vertical = 16.dp),
-            placeholder = { Text("Write your entry, or tap the mic to speak it...") }
+            placeholder = "Write your entry, or tap the mic to speak it..."
         )
 
         uiState.errorMessage?.let { message ->
